@@ -200,12 +200,13 @@ def run_once() -> pd.DataFrame:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False,
+            headless=True,
             args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
-                "--start-maximized",
-            ],
-        )
+    ],
+)
 
         context = browser.new_context(
             viewport={"width": 1400, "height": 900},
