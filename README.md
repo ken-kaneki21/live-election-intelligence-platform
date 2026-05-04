@@ -21,6 +21,7 @@ Election result data is frequently refreshed, scattered across public result pag
 - Raw cleaned data explorer
 - Groq AI-ready summary module
 - Portfolio-ready data engineering architecture
+- Trend-based government formation tracker
 
 ## Tech Stack
 
@@ -60,6 +61,9 @@ AI Summary Layer
 ### State Monitor
 
 ![State Monitor](screenshots/state_monitor.png)
+
+### Government Tracker
+![Government Tracker](screenshots/government_tracker.png)
 
 ### Close Watch
 
@@ -159,6 +163,10 @@ Shows national party trend snapshot, seat trends, leading count, won count, stat
 ### State Monitor
 
 Tracks party-wise trend performance across states.
+
+### Government Tracker
+
+Estimates trend-based government formation possibilities using party-wise seat trend counts, majority marks, leading parties, alliance requirement, and shortfall analysis.
 
 ### Close Watch
 

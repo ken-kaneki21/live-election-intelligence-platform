@@ -469,6 +469,66 @@ def prepare_display_df(df):
     available_cols = [col for col in wanted_cols if col in display_df.columns]
     return display_df[available_cols]
 
+def get_government_tracker(df):
+    if df.empty:
+        return pd.DataFrame()
+
+    tracker_rows = []
+
+    for state, state_df in df.groupby("state"):
+        party_totals = (
+            state_df.groupby("party", as_index=False)["votes"]
+            .sum()
+            .sort_values("votes", ascending=False)
+        )
+
+        if party_totals.empty:
+            continue
+
+        total_seats_tracked = int(party_totals["votes"].sum())
+        majority_mark = (total_seats_tracked // 2) + 1
+
+        leading_party = party_totals.iloc[0]["party"]
+        leading_party_total = int(party_totals.iloc[0]["votes"])
+
+        second_party = party_totals.iloc[1]["party"] if len(party_totals) > 1 else "N/A"
+        second_party_total = int(party_totals.iloc[1]["votes"]) if len(party_totals) > 1 else 0
+
+        others_total = int(party_totals.iloc[2:]["votes"].sum()) if len(party_totals) > 2 else 0
+
+        shortfall = max(majority_mark - leading_party_total, 0)
+
+        if leading_party_total >= majority_mark:
+            formation_status = "Can form government alone"
+            others_required = "No"
+            others_impact = "Low"
+        elif leading_party_total + others_total >= majority_mark:
+            formation_status = "Needs alliance/support"
+            others_required = "Yes"
+            others_impact = "High"
+        else:
+            formation_status = "Majority not visible yet"
+            others_required = "Yes"
+            others_impact = "Medium"
+
+        tracker_rows.append(
+            {
+                "State": state,
+                "Total Seats Tracked": total_seats_tracked,
+                "Majority Mark": majority_mark,
+                "Leading Party": leading_party,
+                "Leading Party Trends": leading_party_total,
+                "Second Party": second_party,
+                "Second Party Trends": second_party_total,
+                "Others / Smaller Parties": others_total,
+                "Shortfall": shortfall,
+                "Alliance Needed": others_required,
+                "Others Impact": others_impact,
+                "Formation Status": formation_status,
+            }
+        )
+
+    return pd.DataFrame(tracker_rows)
 
 def is_party_trend_data(df):
     if df.empty:
@@ -598,6 +658,7 @@ color_map = get_color_map(all_parties + ["Others"])
 party_summary = get_party_summary(filtered_df)
 state_summary = get_state_summary(filtered_df)
 vote_share_df = get_vote_share(filtered_df)
+government_tracker_df = get_government_tracker(filtered_df)
 
 total_rows = len(filtered_df)
 total_states = filtered_df["state"].nunique()
@@ -680,10 +741,11 @@ with k4:
 # TABS
 # ============================================================
 
-overview_tab, state_tab, close_tab, party_tab, ai_tab, raw_tab = st.tabs(
+overview_tab, state_tab, govt_tab, close_tab, party_tab, ai_tab, raw_tab = st.tabs(
     [
         "Overview",
         "State Monitor",
+        "Government Tracker",
         "Close Watch",
         "Party Analytics",
         "AI Analyst",
@@ -839,7 +901,138 @@ with state_tab:
         safe_dataframe(state_detail, height=430)
     else:
         st.info("No state-level data available.")
+        
+# ============================================================
+# GOVERNMENT TRACKER TAB
+# ============================================================
 
+with govt_tab:
+    st.markdown(
+        '<div class="section-title">Trend-based Government Formation Tracker</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+<div class="note-box">
+This section estimates government formation possibilities using party-wise seat trend counts.
+It is not a final result prediction. Final government formation depends on certified constituency results, alliances, and official declarations.
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if government_tracker_df.empty:
+        st.info("No government formation data available for the current filters.")
+    else:
+        total_states_in_tracker = government_tracker_df["State"].nunique()
+        alone_count = int(
+            (government_tracker_df["Formation Status"] == "Can form government alone").sum()
+        )
+        alliance_count = int(
+            (government_tracker_df["Formation Status"] == "Needs alliance/support").sum()
+        )
+        unclear_count = int(
+            (government_tracker_df["Formation Status"] == "Majority not visible yet").sum()
+        )
+
+        g1, g2, g3, g4 = st.columns(4)
+
+        with g1:
+            render_metric(
+                "States Analysed",
+                total_states_in_tracker,
+                "States in current filter"
+            )
+
+        with g2:
+            render_metric(
+                "Clear Majority",
+                alone_count,
+                "Trend majority visible"
+            )
+
+        with g3:
+            render_metric(
+                "Alliance Needed",
+                alliance_count,
+                "Support may be required"
+            )
+
+        with g4:
+            render_metric(
+                "Unclear",
+                unclear_count,
+                "Majority not visible yet"
+            )
+
+        st.markdown(
+            '<div class="section-title">State-wise Majority Position</div>',
+            unsafe_allow_html=True,
+        )
+
+        safe_dataframe(government_tracker_df, height=360)
+
+        st.markdown(
+            '<div class="section-title">Leading Party vs Majority Mark</div>',
+            unsafe_allow_html=True,
+        )
+
+        plot_df = government_tracker_df.copy()
+
+        fig_govt = px.bar(
+            plot_df,
+            x="State",
+            y=["Leading Party Trends", "Shortfall"],
+            barmode="stack",
+            title="Leading Party Position Against Majority Requirement",
+            labels={
+                "value": "Seat Trend Count",
+                "variable": "Metric",
+                "State": "State",
+            },
+        )
+
+        fig_govt = plotly_layout(fig_govt, height=480)
+        st.plotly_chart(fig_govt, use_container_width=True)
+
+        st.markdown(
+            '<div class="section-title">Others / Smaller Parties Impact</div>',
+            unsafe_allow_html=True,
+        )
+
+        impact_df = government_tracker_df[
+            [
+                "State",
+                "Leading Party",
+                "Leading Party Trends",
+                "Majority Mark",
+                "Others / Smaller Parties",
+                "Alliance Needed",
+                "Others Impact",
+                "Formation Status",
+            ]
+        ].copy()
+
+        safe_dataframe(impact_df, height=340)
+
+        impact_chart_df = government_tracker_df.copy()
+
+        fig_others = px.bar(
+            impact_chart_df,
+            x="State",
+            y="Others / Smaller Parties",
+            color="Others Impact",
+            title="Potential Influence of Smaller Parties / Others",
+            labels={
+                "Others / Smaller Parties": "Seat Trend Count",
+                "State": "State",
+                "Others Impact": "Impact Level",
+            },
+        )
+
+        fig_others = plotly_layout(fig_others, height=430)
+        st.plotly_chart(fig_others, use_container_width=True)
 
 # ============================================================
 # CLOSE WATCH TAB
