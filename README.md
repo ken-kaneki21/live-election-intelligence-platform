@@ -284,6 +284,7 @@ Estimates trend-based government formation possibilities using party-wise seat t
 ### Candidate Tracker
 
 Tracks candidate-level constituency data scraped from public result pages. Since official status is not available in every parsed row, the dashboard derives the top candidate using vote rank within each constituency.
+Current candidate-level coverage is Tamil Nadu based on the constituency pages exposed by the active ECI result path.
 
 It includes:
 
@@ -397,6 +398,7 @@ This project demonstrates:
 - Streamlit Cloud displays the committed processed CSV files; it does not continuously run the local scheduler.
 - Candidate winner status is derived from vote rank, not official certified winner declarations.
 - Cloud automation can be improved later with Azure VM, GitHub Actions, Azure Blob Storage, or a cloud database.
+- Candidate-level constituency scraping is currently available for Tamil Nadu because the active ECI result path exposes S22 constituency dropdown pages. Party-level trend scraping covers all configured states: Assam, Kerala, Tamil Nadu, West Bengal, and Puducherry.
 
 ## Future Improvements
 
