@@ -374,6 +374,11 @@ This is trend-level intelligence, not certified final election result declaratio
 This dashboard tracks live trend counts from public election result pages. These are not final certified election results. Final results should always be verified from official ECI statistical reports.
 
 Candidate-level status is derived using vote ranking because the parsed ECI candidate tables do not expose official final status consistently. Rank 1 is treated as "Leading / Top Candidate" for trend intelligence, not as a certified winner.
+## Data Coverage
+
+The current version supports multi-state party-level trend monitoring for Assam, Kerala, Tamil Nadu, West Bengal, and Puducherry.
+
+Candidate-level constituency scraping is currently available for Tamil Nadu only because the active ECI result path exposes discoverable S22 constituency pages. Other configured states are tracked at party level and marked transparently as candidate-page-discovery pending in the coverage report.
 
 ## Portfolio Value
 
