@@ -60,6 +60,11 @@ Streamlit Dashboard
         ↓
 AI Summary Layer
 ```
+## Live Deployment Architecture
+
+The Streamlit dashboard is deployed on Streamlit Cloud, while the ingestion and refresh pipeline runs on an Azure Virtual Machine as a background systemd service. The VM refreshes party-level election trend data every 5 minutes, rebuilds available candidate-level processed datasets periodically, and uploads processed CSV outputs to Azure Blob Storage.
+
+The deployed Streamlit app reads the latest processed datasets from Azure Blob Storage, allowing viewers to access refreshed election intelligence without running the scraper locally.
 
 ## Data Pipeline Design
 
@@ -379,6 +384,14 @@ Candidate-level status is derived using vote ranking because the parsed ECI cand
 The current version supports multi-state party-level trend monitoring for Assam, Kerala, Tamil Nadu, West Bengal, and Puducherry.
 
 Candidate-level constituency scraping is currently available for Tamil Nadu only because the active ECI result path exposes discoverable S22 constituency pages. Other configured states are tracked at party level and marked transparently as candidate-page-discovery pending in the coverage report.
+
+## Current Coverage
+
+- Party-level trend monitoring: Assam, Kerala, Tamil Nadu, West Bengal, Puducherry
+- Candidate-level monitoring: Tamil Nadu
+- Constituency map intelligence: Tamil Nadu
+- Other states are marked transparently as candidate pages not discovered in the current ECI
+  result path
 
 ## Portfolio Value
 
