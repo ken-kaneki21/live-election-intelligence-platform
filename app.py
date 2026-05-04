@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -13,6 +15,9 @@ from transform import (
 )
 
 from ai_insights import generate_election_summary
+
+
+CANDIDATE_DATA_PATH = "data/processed/latest_candidate_results.csv"
 
 
 # ============================================================
@@ -64,6 +69,14 @@ PARTY_COLORS = {
     "RMPOI": "#FCA5A5",
     "CMPKSC": "#FDBA74",
     "AMMKMNKZ": "#A3E635",
+    "DRAVIDA MUNNETRA KAZHAGAM": "#EF4444",
+    "ALL INDIA ANNA DRAVIDA MUNNETRA KAZHAGAM": "#22C55E",
+    "TAMILAGA VETTRI KAZHAGAM": "#7C3AED",
+    "NAAM TAMILAR KATCHI": "#F59E0B",
+    "BHARATIYA JANATA PARTY": "#F97316",
+    "INDIAN NATIONAL CONGRESS": "#2563EB",
+    "INDEPENDENT": "#94A3B8",
+    "NONE OF THE ABOVE": "#64748B",
 }
 
 FALLBACK_COLORS = [
@@ -469,6 +482,55 @@ def prepare_display_df(df):
     available_cols = [col for col in wanted_cols if col in display_df.columns]
     return display_df[available_cols]
 
+
+@st.cache_data(ttl=60)
+def load_candidate_data():
+    if not os.path.exists(CANDIDATE_DATA_PATH):
+        return pd.DataFrame()
+
+    try:
+        candidate_data = pd.read_csv(CANDIDATE_DATA_PATH)
+    except Exception:
+        return pd.DataFrame()
+
+    required_cols = [
+        "constituency",
+        "constituency_no",
+        "candidate",
+        "party",
+        "votes",
+        "vote_rank",
+        "derived_status",
+        "vote_margin",
+        "runner_up_votes",
+        "eci_code",
+        "source_url",
+        "scraped_at",
+    ]
+
+    for col in required_cols:
+        if col not in candidate_data.columns:
+            candidate_data[col] = ""
+
+    numeric_cols = ["votes", "vote_rank", "vote_margin", "runner_up_votes"]
+
+    for col in numeric_cols:
+        candidate_data[col] = (
+            pd.to_numeric(candidate_data[col], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+
+    text_cols = ["constituency", "candidate", "party", "derived_status"]
+
+    for col in text_cols:
+        candidate_data[col] = candidate_data[col].astype(str).str.strip()
+
+    candidate_data["party"] = candidate_data["party"].str.upper()
+
+    return candidate_data
+
+
 def get_government_tracker(df):
     if df.empty:
         return pd.DataFrame()
@@ -530,6 +592,7 @@ def get_government_tracker(df):
 
     return pd.DataFrame(tracker_rows)
 
+
 def is_party_trend_data(df):
     if df.empty:
         return True
@@ -554,6 +617,8 @@ try:
 except Exception as e:
     st.error(f"Failed to load processed election data: {e}")
     st.stop()
+
+candidate_df = load_candidate_data()
 
 required_columns = [
     "state",
@@ -594,9 +659,10 @@ with st.sidebar:
         f"""
 <div class="note-box">
 <b>ECI Automated Feed</b><br>
-Refresh: 5 min<br>
+Party refresh: 5 min<br>
+Candidate layer: batch scraped<br>
 Synced: {latest_sync}<br>
-Mode: Party Trends
+Mode: Party Trends + Candidate Layer
 </div>
         """,
         unsafe_allow_html=True,
@@ -653,7 +719,13 @@ Mode: Party Trends
 # ============================================================
 
 all_parties = sorted(df["party"].dropna().unique().tolist())
-color_map = get_color_map(all_parties + ["Others"])
+
+if not candidate_df.empty and "party" in candidate_df.columns:
+    candidate_parties_for_colors = sorted(candidate_df["party"].dropna().unique().tolist())
+else:
+    candidate_parties_for_colors = []
+
+color_map = get_color_map(all_parties + candidate_parties_for_colors + ["Others"])
 
 party_summary = get_party_summary(filtered_df)
 state_summary = get_state_summary(filtered_df)
@@ -690,11 +762,12 @@ st.markdown(
     <div class="hero-title">Election Intelligence Platform</div>
     <div class="hero-subtitle">
         Live election trend ingestion, automated refresh, party-wise analytics, state-level monitoring,
-        competitive trend detection, and AI-assisted summaries built as a data engineering portfolio project.
+        candidate-level constituency tracking, competitive trend detection, and AI-assisted summaries built as a data engineering portfolio project.
     </div>
     <div class="pill-row">
         <div class="pill">Automated ECI Scraper</div>
-        <div class="pill">5-Minute Scheduler</div>
+        <div class="pill">5-Minute Party Scheduler</div>
+        <div class="pill">Candidate Batch Layer</div>
         <div class="pill">Python</div>
         <div class="pill">Streamlit</div>
         <div class="pill">Plotly</div>
@@ -741,11 +814,12 @@ with k4:
 # TABS
 # ============================================================
 
-overview_tab, state_tab, govt_tab, close_tab, party_tab, ai_tab, raw_tab = st.tabs(
+overview_tab, state_tab, govt_tab, candidate_tab, close_tab, party_tab, ai_tab, raw_tab = st.tabs(
     [
         "Overview",
         "State Monitor",
         "Government Tracker",
+        "Candidate Tracker",
         "Close Watch",
         "Party Analytics",
         "AI Analyst",
@@ -901,7 +975,8 @@ with state_tab:
         safe_dataframe(state_detail, height=430)
     else:
         st.info("No state-level data available.")
-        
+
+
 # ============================================================
 # GOVERNMENT TRACKER TAB
 # ============================================================
@@ -939,32 +1014,16 @@ It is not a final result prediction. Final government formation depends on certi
         g1, g2, g3, g4 = st.columns(4)
 
         with g1:
-            render_metric(
-                "States Analysed",
-                total_states_in_tracker,
-                "States in current filter"
-            )
+            render_metric("States Analysed", total_states_in_tracker, "States in current filter")
 
         with g2:
-            render_metric(
-                "Clear Majority",
-                alone_count,
-                "Trend majority visible"
-            )
+            render_metric("Clear Majority", alone_count, "Trend majority visible")
 
         with g3:
-            render_metric(
-                "Alliance Needed",
-                alliance_count,
-                "Support may be required"
-            )
+            render_metric("Alliance Needed", alliance_count, "Support may be required")
 
         with g4:
-            render_metric(
-                "Unclear",
-                unclear_count,
-                "Majority not visible yet"
-            )
+            render_metric("Unclear", unclear_count, "Majority not visible yet")
 
         st.markdown(
             '<div class="section-title">State-wise Majority Position</div>',
@@ -1034,6 +1093,267 @@ It is not a final result prediction. Final government formation depends on certi
         fig_others = plotly_layout(fig_others, height=430)
         st.plotly_chart(fig_others, use_container_width=True)
 
+
+# ============================================================
+# CANDIDATE TRACKER TAB
+# ============================================================
+
+with candidate_tab:
+    st.markdown(
+        '<div class="section-title">Candidate-Level Constituency Tracker</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+<div class="note-box">
+This layer tracks candidate-level constituency data scraped from public result pages.
+Since the parsed table does not expose official final status for every row, the dashboard derives "Leading / Top Candidate"
+using vote rank inside each constituency. Treat this as trend-level candidate intelligence, not certified final results.
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if candidate_df.empty:
+        st.info(
+            "Candidate-level data is not available yet. Run eci_candidate_auto_ingest.py to generate latest_candidate_results.csv."
+        )
+    else:
+        candidate_last_synced = (
+            safe_datetime(candidate_df["scraped_at"].dropna().astype(str).max())
+            if "scraped_at" in candidate_df.columns and not candidate_df["scraped_at"].dropna().empty
+            else "N/A"
+        )
+
+        leading_candidates = candidate_df[candidate_df["vote_rank"] == 1].copy()
+        runner_up_candidates = candidate_df[candidate_df["vote_rank"] == 2].copy()
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        with c1:
+            render_metric("Constituencies", candidate_df["constituency"].nunique(), "Candidate layer coverage")
+
+        with c2:
+            render_metric("Candidates", len(candidate_df), "Cleaned candidate rows")
+
+        with c3:
+            render_metric("Parties", candidate_df["party"].nunique(), "Parties represented")
+
+        with c4:
+            render_metric("Top Candidates", len(leading_candidates), "Rank 1 per constituency")
+
+        with c5:
+            render_metric("Candidate Sync", candidate_last_synced, "Latest scrape time")
+
+        st.markdown(
+            '<div class="section-title">Candidate Filters</div>',
+            unsafe_allow_html=True,
+        )
+
+        f1, f2, f3 = st.columns(3)
+
+        with f1:
+            selected_candidate_party = st.selectbox(
+                "Candidate Party",
+                ["All"] + sorted(candidate_df["party"].dropna().unique().tolist()),
+                key="candidate_party_filter",
+            )
+
+        with f2:
+            selected_constituency = st.selectbox(
+                "Constituency",
+                ["All"] + sorted(candidate_df["constituency"].dropna().unique().tolist()),
+                key="candidate_constituency_filter",
+            )
+
+        with f3:
+            candidate_search = st.text_input(
+                "Search Candidate",
+                "",
+                key="candidate_search_box",
+            )
+
+        candidate_filtered = candidate_df.copy()
+
+        if selected_candidate_party != "All":
+            candidate_filtered = candidate_filtered[
+                candidate_filtered["party"] == selected_candidate_party
+            ]
+
+        if selected_constituency != "All":
+            candidate_filtered = candidate_filtered[
+                candidate_filtered["constituency"] == selected_constituency
+            ]
+
+        if candidate_search.strip():
+            candidate_filtered = candidate_filtered[
+                candidate_filtered["candidate"].str.contains(
+                    candidate_search.strip(),
+                    case=False,
+                    na=False,
+                )
+            ]
+
+        filtered_leading_candidates = candidate_filtered[
+            candidate_filtered["vote_rank"] == 1
+        ].copy()
+
+        st.markdown(
+            '<div class="section-title">Party-wise Top Candidate Count</div>',
+            unsafe_allow_html=True,
+        )
+
+        party_leads = (
+            leading_candidates.groupby("party", as_index=False)
+            .agg(constituencies_led=("constituency", "count"))
+            .sort_values("constituencies_led", ascending=False)
+        )
+
+        if not party_leads.empty:
+            fig_party_leads = px.bar(
+                party_leads.head(20),
+                x="party",
+                y="constituencies_led",
+                color="party",
+                color_discrete_map=color_map,
+                text="constituencies_led",
+                title="Top Candidate Count by Party",
+                labels={
+                    "party": "Party",
+                    "constituencies_led": "Constituencies Led",
+                },
+            )
+
+            fig_party_leads.update_traces(textposition="outside", cliponaxis=False)
+            fig_party_leads = plotly_layout(fig_party_leads, height=460)
+            st.plotly_chart(fig_party_leads, use_container_width=True)
+        else:
+            st.info("No party-wise top candidate data available.")
+
+        st.markdown(
+            '<div class="section-title">Closest Candidate Margins</div>',
+            unsafe_allow_html=True,
+        )
+
+        close_margin_df = filtered_leading_candidates[
+            filtered_leading_candidates["vote_margin"] > 0
+        ].sort_values("vote_margin", ascending=True)
+
+        if not close_margin_df.empty:
+            fig_close_candidate = px.bar(
+                close_margin_df.head(25),
+                x="vote_margin",
+                y="constituency",
+                orientation="h",
+                color="party",
+                color_discrete_map=color_map,
+                title="Closest Margins Among Top Candidates",
+                labels={
+                    "vote_margin": "Vote Margin",
+                    "constituency": "Constituency",
+                    "party": "Party",
+                },
+                hover_data=["candidate", "votes", "runner_up_votes"],
+            )
+
+            fig_close_candidate = plotly_layout(fig_close_candidate, height=620)
+            st.plotly_chart(fig_close_candidate, use_container_width=True)
+
+            safe_dataframe(
+                close_margin_df[
+                    [
+                        "constituency",
+                        "candidate",
+                        "party",
+                        "votes",
+                        "runner_up_votes",
+                        "vote_margin",
+                        "derived_status",
+                    ]
+                ].head(50),
+                height=360,
+            )
+        else:
+            st.info("No margin data available for the selected filters.")
+
+        st.markdown(
+            '<div class="section-title">Top Candidates by Votes</div>',
+            unsafe_allow_html=True,
+        )
+
+        top_vote_df = candidate_filtered.sort_values("votes", ascending=False)
+
+        if not top_vote_df.empty:
+            fig_top_votes = px.bar(
+                top_vote_df.head(25).sort_values("votes", ascending=True),
+                x="votes",
+                y="candidate",
+                orientation="h",
+                color="party",
+                color_discrete_map=color_map,
+                title="Top Candidates by Votes",
+                labels={
+                    "votes": "Votes",
+                    "candidate": "Candidate",
+                    "party": "Party",
+                },
+                hover_data=["constituency", "vote_rank", "derived_status"],
+            )
+
+            fig_top_votes = plotly_layout(fig_top_votes, height=650)
+            st.plotly_chart(fig_top_votes, use_container_width=True)
+        else:
+            st.info("No candidate rows available for the selected filters.")
+
+        st.markdown(
+            '<div class="section-title">Leading Candidate Table</div>',
+            unsafe_allow_html=True,
+        )
+
+        if not filtered_leading_candidates.empty:
+            leading_display = filtered_leading_candidates[
+                [
+                    "constituency",
+                    "candidate",
+                    "party",
+                    "votes",
+                    "vote_margin",
+                    "runner_up_votes",
+                    "derived_status",
+                    "scraped_at",
+                ]
+            ].sort_values("vote_margin", ascending=True)
+
+            safe_dataframe(leading_display, height=420)
+        else:
+            st.info("No leading candidate rows for selected filters.")
+
+        st.markdown(
+            '<div class="section-title">Full Candidate-Level Data Table</div>',
+            unsafe_allow_html=True,
+        )
+
+        display_candidate_cols = [
+            "constituency",
+            "candidate",
+            "party",
+            "votes",
+            "vote_rank",
+            "derived_status",
+            "vote_margin",
+            "runner_up_votes",
+            "scraped_at",
+        ]
+
+        safe_dataframe(
+            candidate_filtered[display_candidate_cols].sort_values(
+                ["constituency", "vote_rank"]
+            ),
+            height=540,
+        )
+
+
 # ============================================================
 # CLOSE WATCH TAB
 # ============================================================
@@ -1047,8 +1367,8 @@ with close_tab:
     st.markdown(
         """
 <div class="warn-box">
-Current feed is party-trend level, not candidate-level constituency margin data.
-This section tracks low-volume party trend rows. Candidate-level close contests require the next scraping layer.
+This section tracks low-volume party trend rows from the fast summary feed.
+For candidate-level close margins, use the Candidate Tracker tab.
 </div>
         """,
         unsafe_allow_html=True,
@@ -1247,8 +1567,8 @@ It is an explanatory layer, not a prediction engine or official result source.
 <div class="metric-box">
     <div class="small-muted">
         Current scope includes party-wise seat trend counts, state coverage,
-        leading and won status, and top-party movement. Candidate-level constituency margins
-        will require the next scraping layer.
+        leading/won status, top-party movement, and candidate-level constituency data
+        available in the Candidate Tracker tab.
     </div>
 </div>
             """,
@@ -1283,28 +1603,45 @@ with raw_tab:
         unsafe_allow_html=True,
     )
 
-    safe_dataframe(prepare_display_df(filtered_df), height=560)
-
-    csv_data = filtered_df.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        label="Download Current Filtered Dataset",
-        data=csv_data,
-        file_name="election_trend_data_filtered.csv",
-        mime="text/csv",
-        use_container_width=True,
+    st.markdown(
+        """
+<div class="note-box">
+This is the cleaned party-level dataset powering the dashboard. The automated scraper overwrites this data on each scheduled refresh.
+Candidate-level data is loaded separately from latest_candidate_results.csv.
+</div>
+        """,
+        unsafe_allow_html=True,
     )
 
+    raw_display = prepare_display_df(filtered_df)
+    safe_dataframe(raw_display, height=560)
 
-# ============================================================
-# FOOTER
-# ============================================================
+    st.markdown(
+        '<div class="section-title">Candidate Dataset Availability</div>',
+        unsafe_allow_html=True,
+    )
 
-st.markdown(
-    """
+    if candidate_df.empty:
+        st.info("Candidate dataset not found.")
+    else:
+        candidate_status = pd.DataFrame(
+            [
+                {
+                    "Dataset": "latest_candidate_results.csv",
+                    "Rows": len(candidate_df),
+                    "Constituencies": candidate_df["constituency"].nunique(),
+                    "Parties": candidate_df["party"].nunique(),
+                    "Latest Scrape": safe_datetime(candidate_df["scraped_at"].max()),
+                }
+            ]
+        )
+        safe_dataframe(candidate_status, height=120)
+
+    st.markdown(
+        """
 <div class="footer-note">
-Automated election data engineering and analytics platform.
+Election Intelligence Platform | Public data ingestion, analytics-ready transformation, Streamlit dashboarding, and AI-assisted reporting.
 </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True,
+    )
