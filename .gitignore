@@ -1,26 +1,15 @@
 venv/
 __pycache__/
 *.pyc
+
 .env
 .env.*
 !.env.example
-.DS_Store
 
-data/raw/
+.DS_Store
 *.log
 .ipynb_checkpoints/
 
+data/raw/
 .playwright/
 .streamlit/secrets.toml
-
-requirements.txtpython
-
-# Dev/debug scripts from scraping experiments
-scraper.py
-scraper_playwright.py
-inspect_saved_html.py
-
-# Optional empty/dev folders
-notebooks/
-sql/
-dashboard/
