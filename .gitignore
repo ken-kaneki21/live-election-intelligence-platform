@@ -13,3 +13,10 @@ __pycache__/
 data/raw/
 .playwright/
 .streamlit/secrets.toml
+
+bulk_ingest.py
+database.py
+manual_ingest.py
+scraper.py
+dashboard/
+sql/
