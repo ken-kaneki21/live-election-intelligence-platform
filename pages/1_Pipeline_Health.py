@@ -5,6 +5,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from azure_data_loader import (
+    load_party_results,
+    load_candidate_results,
+    load_candidate_coverage_report,
+)
 
 PARTY_DATA_PATH = "data/processed/latest_results.csv"
 CANDIDATE_DATA_PATH = "data/processed/latest_candidate_results.csv"
@@ -387,8 +392,9 @@ def plotly_layout(fig, height=420):
     return fig
 
 
-party_df = load_csv(PARTY_DATA_PATH)
-candidate_df = load_csv(CANDIDATE_DATA_PATH)
+party_df = load_party_results()
+candidate_df = load_candidate_results()
+coverage_df = load_candidate_coverage_report()
 discovery_df = load_csv(DISCOVERY_DATA_PATH)
 
 

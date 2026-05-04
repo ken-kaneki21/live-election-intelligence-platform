@@ -9,6 +9,8 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
+from azure_data_loader import load_candidate_results, load_party_results
+
 
 st.set_page_config(
     page_title="Constituency Map",
@@ -210,10 +212,10 @@ def safe_int(value, default=0):
 
 @st.cache_data(show_spinner=False)
 def load_candidate_data():
-    if not os.path.exists(CANDIDATE_FILE):
-        return pd.DataFrame()
+    df = load_candidate_results()
 
-    df = pd.read_csv(CANDIDATE_FILE)
+    if df.empty:
+        return df
 
     required_columns = [
         "constituency",
@@ -251,10 +253,10 @@ def load_candidate_data():
 
 @st.cache_data(show_spinner=False)
 def load_party_data():
-    if not os.path.exists(PARTY_FILE):
-        return pd.DataFrame()
+    df = load_party_results()
 
-    df = pd.read_csv(PARTY_FILE)
+    if df.empty:
+        return df
 
     for col in ["state", "party", "won", "leading", "total"]:
         if col not in df.columns:
