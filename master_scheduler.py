@@ -11,11 +11,13 @@ from dotenv import load_dotenv
 
 PARTY_REFRESH_SECONDS = 300          # 5 minutes
 CANDIDATE_REBUILD_SECONDS = 1800     # 30 minutes
+SLEEP_SECONDS = 30
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 PARTY_SCRIPT = PROJECT_ROOT / "eci_party_auto_ingest.py"
 CANDIDATE_SCRIPT = PROJECT_ROOT / "eci_candidate_auto_ingest_v2.py"
+CANDIDATE_MASTER_SCRIPT = PROJECT_ROOT / "eci_candidate_master_ingest.py"
 
 PARTY_OUTPUT = PROJECT_ROOT / "data" / "processed" / "latest_results.csv"
 CANDIDATE_OUTPUT = PROJECT_ROOT / "data" / "processed" / "latest_candidate_results.csv"
@@ -112,15 +114,49 @@ def rebuild_candidate_dataset():
     )
 
 
+def run_candidate_master_ingest():
+    if not CANDIDATE_MASTER_SCRIPT.exists():
+        print(f"Candidate master ingest script not found: {CANDIDATE_MASTER_SCRIPT}")
+        print("Skipping candidate coverage/state-wise output refresh.")
+        return False
+
+    return run_command(
+        [sys.executable, str(CANDIDATE_MASTER_SCRIPT)],
+        "Candidate master coverage and state-wise output refresh",
+    )
+
+
+def rebuild_candidate_pipeline():
+    """
+    Rebuilds candidate processed dataset first, then runs the master coverage layer.
+    This keeps latest_candidate_results.csv, candidates_tamil_nadu.csv, and
+    candidate_coverage_report.csv consistent.
+    """
+    rebuild_success = rebuild_candidate_dataset()
+
+    if not rebuild_success:
+        print("Candidate master ingest skipped because candidate rebuild failed.")
+        return False
+
+    master_success = run_candidate_master_ingest()
+
+    return rebuild_success or master_success
+
+
 def run_candidate_manual_visible():
     if not CANDIDATE_SCRIPT.exists():
         print(f"Candidate scraper v2 not found: {CANDIDATE_SCRIPT}")
         return False
 
-    return run_command(
+    scrape_success = run_command(
         [sys.executable, str(CANDIDATE_SCRIPT), "--visible"],
         "Candidate-level visible browser scraping",
     )
+
+    if scrape_success:
+        run_candidate_master_ingest()
+
+    return scrape_success
 
 
 def get_azure_client():
@@ -135,7 +171,8 @@ def get_azure_client():
         from azure.storage.blob import BlobServiceClient
     except ImportError:
         print("Azure upload skipped: azure-storage-blob is not installed.")
-        print("Install it using: pip install azure-storage-blob")
+        print("Install it using:")
+        print("pip install azure-storage-blob")
         return None, None
 
     try:
@@ -217,8 +254,11 @@ def print_file_status():
 
     for label, file_path in output_files:
         if file_path.exists():
+            modified_time = datetime.fromtimestamp(file_path.stat().st_mtime)
+            file_size_kb = file_path.stat().st_size / 1024
             print(f"{label} exists: {file_path}")
-            print(f"{label} modified: {datetime.fromtimestamp(file_path.stat().st_mtime)}")
+            print(f"{label} modified: {modified_time}")
+            print(f"{label} size: {file_size_kb:.2f} KB")
         else:
             print(f"{label} missing: {file_path}")
 
@@ -228,6 +268,7 @@ def run_loop(run_candidate_rebuild=True, upload_to_azure=True):
     print(f"Party refresh interval: {PARTY_REFRESH_SECONDS} seconds")
     print(f"Candidate rebuild interval: {CANDIDATE_REBUILD_SECONDS} seconds")
     print("Candidate full scraping is intentionally manual/batch, not automatic every 5 minutes.")
+    print("Candidate rebuild refreshes processed candidate outputs from existing partial/raw data.")
     print("Azure upload enabled." if upload_to_azure else "Azure upload disabled.")
     print_file_status()
 
@@ -241,20 +282,26 @@ def run_loop(run_candidate_rebuild=True, upload_to_azure=True):
         if current_time - last_party_run >= PARTY_REFRESH_SECONDS:
             party_success = run_party_ingestion()
             last_party_run = current_time
-            changed = changed or party_success
+
+            if party_success:
+                changed = True
+
             print_file_status()
 
         if run_candidate_rebuild and current_time - last_candidate_rebuild >= CANDIDATE_REBUILD_SECONDS:
-            candidate_success = rebuild_candidate_dataset()
+            candidate_success = rebuild_candidate_pipeline()
             last_candidate_rebuild = current_time
-            changed = changed or candidate_success
+
+            if candidate_success:
+                changed = True
+
             print_file_status()
 
         if upload_to_azure and changed:
             upload_processed_outputs_to_azure()
 
-        print(f"\n[{timestamp()}] Sleeping for 30 seconds...")
-        time.sleep(30)
+        print(f"\n[{timestamp()}] Sleeping for {SLEEP_SECONDS} seconds...")
+        time.sleep(SLEEP_SECONDS)
 
 
 def parse_args():
@@ -265,7 +312,7 @@ def parse_args():
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Run party ingestion once and candidate rebuild once, upload outputs, then exit.",
+        help="Run party ingestion once, candidate rebuild once, candidate master ingest once, upload outputs, then exit.",
     )
 
     parser.add_argument(
@@ -277,13 +324,19 @@ def parse_args():
     parser.add_argument(
         "--candidate-rebuild-only",
         action="store_true",
-        help="Only rebuild final candidate dataset from partial raw data.",
+        help="Only rebuild final candidate dataset from partial raw data and refresh candidate coverage outputs.",
+    )
+
+    parser.add_argument(
+        "--candidate-master-only",
+        action="store_true",
+        help="Only run candidate master coverage/state-wise output refresh.",
     )
 
     parser.add_argument(
         "--candidate-scrape-visible",
         action="store_true",
-        help="Run candidate scraper in visible browser mode manually.",
+        help="Run candidate scraper in visible browser mode manually, then refresh candidate master outputs.",
     )
 
     parser.add_argument(
@@ -327,7 +380,16 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.candidate_rebuild_only:
-        success = rebuild_candidate_dataset()
+        success = rebuild_candidate_pipeline()
+        print_file_status()
+
+        if upload_to_azure and success:
+            upload_processed_outputs_to_azure()
+
+        sys.exit(0)
+
+    if args.candidate_master_only:
+        success = run_candidate_master_ingest()
         print_file_status()
 
         if upload_to_azure and success:
@@ -346,7 +408,7 @@ if __name__ == "__main__":
 
     if args.once:
         party_success = run_party_ingestion()
-        candidate_success = rebuild_candidate_dataset()
+        candidate_success = rebuild_candidate_pipeline()
         print_file_status()
 
         if upload_to_azure and (party_success or candidate_success):
