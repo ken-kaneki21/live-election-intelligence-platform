@@ -7,6 +7,8 @@ import plotly.express as px
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
+from azure_data_loader import load_candidate_results, load_candidate_coverage_report
+
 
 # ============================================================
 # PAGE CONFIG
@@ -199,11 +201,42 @@ st.markdown(
 # ============================================================
 
 def clean_text(value):
+    # Defensive handling: sometimes duplicate column names make pandas pass a Series
+    # instead of a scalar. Pick the first non-empty value instead of crashing.
+    if isinstance(value, pd.Series):
+        non_empty = value.dropna().astype(str)
+        if non_empty.empty:
+            return ""
+        value = non_empty.iloc[0]
+
     if pd.isna(value):
         return ""
+
     value = str(value)
     value = re.sub(r"\s+", " ", value)
     return value.strip()
+
+
+def coalesce_duplicate_columns(df):
+    # After renaming columns like result_status/derived_status -> status, pandas can
+    # contain duplicate column names. Then df["status"] becomes a DataFrame, not a Series.
+    # This function merges duplicate columns row-wise using the first non-empty value.
+    if not df.columns.duplicated().any():
+        return df
+
+    output = pd.DataFrame(index=df.index)
+
+    for col in dict.fromkeys(df.columns):
+        selected = df.loc[:, df.columns == col]
+
+        if selected.shape[1] == 1:
+            output[col] = selected.iloc[:, 0]
+            continue
+
+        merged = selected.bfill(axis=1).iloc[:, 0]
+        output[col] = merged
+
+    return output
 
 
 def clean_status(value):
@@ -254,10 +287,10 @@ def get_file_modified_time(path):
 
 @st.cache_data(ttl=60)
 def load_candidate_data():
-    if not os.path.exists(CANDIDATE_FILE):
-        return pd.DataFrame()
+    df = load_candidate_results()
 
-    df = pd.read_csv(CANDIDATE_FILE)
+    if df.empty:
+        return df
 
     df.columns = [clean_text(col).lower() for col in df.columns]
 
@@ -274,9 +307,12 @@ def load_candidate_data():
         "total_votes": "votes",
         "vote": "votes",
         "result_status": "status",
+        "derived_status": "status",
+        "vote_margin": "margin",
     }
 
     df = df.rename(columns={col: rename_map.get(col, col) for col in df.columns})
+    df = coalesce_duplicate_columns(df)
 
     required_columns = [
         "state",
@@ -325,10 +361,11 @@ def load_candidate_data():
 
 @st.cache_data(ttl=60)
 def load_coverage_data():
-    if not os.path.exists(COVERAGE_FILE):
-        return pd.DataFrame()
+    df = load_candidate_coverage_report()
 
-    df = pd.read_csv(COVERAGE_FILE)
+    if df.empty:
+        return df
+
     df.columns = [clean_text(col).lower() for col in df.columns]
     return df
 
