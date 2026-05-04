@@ -22,6 +22,11 @@ Election result data is frequently refreshed, scattered across public result pag
 - Groq AI-ready summary module
 - Portfolio-ready data engineering architecture
 - Trend-based government formation tracker
+- Candidate-level constituency tracking
+- Leading candidate detection using vote-rank logic
+- Closest candidate margin monitoring
+- Party-wise top candidate count
+- Searchable candidate and constituency-level data table
 
 ## Tech Stack
 
@@ -168,6 +173,10 @@ Tracks party-wise trend performance across states.
 
 Estimates trend-based government formation possibilities using party-wise seat trend counts, majority marks, leading parties, alliance requirement, and shortfall analysis.
 
+### Candidate Tracker
+
+Tracks candidate-level constituency data scraped from public result pages. Since official status is not available in every parsed row, the dashboard derives the top candidate using vote rank within each constituency. It includes party-wise top candidate count, closest margins, top candidates by votes, candidate search, constituency filters, and full candidate-level data exploration.
+
 ### Close Watch
 
 Highlights competitive party trends based on margin-like trend differences.
@@ -197,6 +206,7 @@ The scheduler runs separately from the Streamlit dashboard.
 ## Important Note
 
 This dashboard tracks live trend counts from public election result pages. These are not final certified election results. Final results should always be verified from official ECI statistical reports.
+Candidate-level status is derived using vote ranking because the parsed ECI candidate tables do not expose official final status consistently. Rank 1 is treated as "Leading / Top Candidate" for trend intelligence, not as a certified winner.
 
 ## Portfolio Value
 
