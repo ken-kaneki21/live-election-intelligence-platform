@@ -51,7 +51,31 @@ Streamlit Dashboard
         ↓
 AI Summary Layer
 ```
+## Dashboard Preview
 
+### Overview
+
+![Overview](screenshots/overview.png)
+
+### State Monitor
+
+![State Monitor](screenshots/state_monitor.png)
+
+### Close Watch
+
+![Close Watch](screenshots/close_watch.png)
+
+### Party Analytics
+
+![Party Analytics](screenshots/party_analytics.png)
+
+### AI Analyst
+
+![AI Analyst](screenshots/ai_analyst.png)
+
+### Data Table
+
+![Data Table](screenshots/data_table.png)
 ## Folder Structure
 
 ```text
